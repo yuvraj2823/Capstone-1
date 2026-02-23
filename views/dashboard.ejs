@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/style.css">
+    <title>Dashboard | HealthCare Portal</title>
+</head>
+<body class="health-bg">
+
+<div class="dashboard-card">
+
+```
+<header class="dash-header">
+    <h1>Welcome, <%= user.name %> </h1>
+    <p>Your personal healthcare dashboard</p>
+</header>
+
+<section class="patient-info">
+    <h3>Patient Information</h3>
+    <p><strong>Email:</strong> <%= user.email %></p>
+    <p><strong>User ID:</strong> <code><%= user._id %></code></p>
+    <p><strong>Status:</strong> Active</p>
+</section>
+
+<section class="features">
+    <h3>Services</h3>
+
+    <div class="feature-grid">
+        <a href="/tb-detection" class="feature-card">
+            <h4>TB Detection</h4>
+            <p>Upload chest X-ray for analysis</p>
+        </a>
+
+        <a href="#" class="feature-card">
+            <h4>Medical Reports</h4>
+            <p>View your diagnostic history</p>
+        </a>
+
+        <a href="#" class="feature-card">
+            <h4>Consultation</h4>
+            <p>Connect with healthcare experts</p>
+        </a>
+    </div>
+</section>
+
+<div class="actions">
+    <a href="/logout" class="btn-logout">Logout</a>
+</div>
+```
+
+</div>
+
+</body>
+</html>
