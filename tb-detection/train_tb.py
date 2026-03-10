@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-TB Detection using PyTorch (Auto‑detects dataset structure)
-------------------------------------------------------------
-This script automatically handles the Kaggle dataset folder structure.
-"""
+
 
 import os
 import sys
