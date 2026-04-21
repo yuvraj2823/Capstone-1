@@ -21,8 +21,16 @@ class XRayNormalize(object):
     def __call__(self, img_tensor):
         return img_tensor * 2048.0 - 1024.0
 
+def resize_with_padding(img):
+    # Maintain aspect ratio and pad with black
+    img.thumbnail(TARGET_SIZE, Image.LANCZOS)
+    new_img = Image.new("L", TARGET_SIZE, (0))
+    new_img.paste(img, ((TARGET_SIZE[0] - img.size[0]) // 2,
+                        (TARGET_SIZE[1] - img.size[1]) // 2))
+    return new_img
+
 _transform = transforms.Compose([
-    transforms.Resize(TARGET_SIZE),
+    transforms.Lambda(resize_with_padding),
     transforms.ToTensor(),
     XRayNormalize(),
 ])
