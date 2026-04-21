@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export default function LoginPage() {
-  const { login, signup } = useAuth();
+  const { user, login, signup } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [form, setForm] = useState({ username: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (user) navigate('/upload');
+  }, [user, navigate]);
 
   function onChange(e) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
@@ -38,13 +42,13 @@ export default function LoginPage() {
     <main className="auth-page" role="main">
       <div className="auth-card card" id="auth-card">
         <header className="auth-header">
-          <h1>🫁 <span>TB</span>-Detect</h1>
+          <h1><span>TB</span>-Detect</h1>
           <p>AI-Powered Tuberculosis Screening</p>
         </header>
 
         {error && (
           <div className="alert alert-error mb-4" role="alert" id="auth-error">
-            ⚠️ {error}
+            Error: {error}
           </div>
         )}
 
@@ -102,7 +106,7 @@ export default function LoginPage() {
             style={{ width: '100%', justifyContent: 'center' }}
             disabled={loading}
           >
-            {loading ? '⏳ Please wait…' : mode === 'login' ? '🔐 Sign In' : '🚀 Create Account'}
+            {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
         </form>
 
@@ -126,7 +130,7 @@ export default function LoginPage() {
 
         <div className="divider" />
         <p className="text-center text-sm text-muted">
-          ⚠️ For research and educational use only. Not a certified medical diagnostic tool.
+          Note: For research and educational use only. Not a certified medical diagnostic tool.
         </p>
       </div>
     </main>
