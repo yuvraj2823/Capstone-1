@@ -12,7 +12,7 @@ TB-Detect is built as a robust microservices-based system, containerized for sca
 │                                                             │
 │  ┌──────────┐    ┌──────────────┐    ┌─────────────────┐    │
 │  │          │    │              │    │                 │    │
-│  │ frontend │──▶│   backend     │──▶│   ai-service    │    │
+│  │ frontend │──▶ │   backend    │──▶ │   ai-service    │    │
 │  │ React    │    │  Node+Express│    │  FastAPI+PyTorch│    │
 │  │ :3000    │    │  :5000       │    │  :8000          │    │
 │  └──────────┘    └──────┬───────┘    └─────────────────┘    │
