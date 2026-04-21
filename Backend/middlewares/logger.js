@@ -1,4 +1,4 @@
-const logger = require('../Backend/config/logger');
+const logger = require('../config/logger');
 
 /**
  * Logs all incoming HTTP requests with method, path, IP, and duration.

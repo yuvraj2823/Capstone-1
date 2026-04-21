@@ -1,7 +1,10 @@
 const sharp = require('sharp');
 const { predictTB } = require('../services/aiService');
 const { createAuditLog } = require('../services/auditService');
-const logger = require('../Backend/config/logger');
+const logger = require('../config/logger');
+
+// ── CHANGE 1: Added ScanRecord requirement ──
+const ScanRecord = require('../models/ScanRecord');
 
 /**
  * POST /api/upload
@@ -15,7 +18,8 @@ async function uploadImage(req, res, next) {
       return res.status(400).json({ success: false, error: 'No image file uploaded.' });
     }
 
-    const { mimetype, buffer, size } = req.file;
+    // Extracted originalname here to use for the ScanRecord
+    const { mimetype, buffer, size, originalname } = req.file;
     const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp'];
 
     if (!allowedMimes.includes(mimetype)) {
@@ -45,6 +49,25 @@ async function uploadImage(req, res, next) {
 
     const duration = Date.now() - start;
 
+    // ── CHANGE 2: Save the scan to MongoDB ──
+    const confidenceScore = Math.max(aiResult.prediction, 1 - aiResult.prediction);
+    const confidencePercent = Math.round(confidenceScore * 100);
+    const dbResultLabel = aiResult.prediction > 0.75 ? 'TB_DETECTED' : 'NORMAL';
+
+    await ScanRecord.create({
+      userId:        req.user?._id, // Used optional chaining in case user isn't populated
+      patientId:     req.body.patientId || `P-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      filename:      originalname || 'unknown',
+      result:        dbResultLabel,
+      confidence:    confidenceScore,
+      originalImageBase64: imageBase64,
+      gradcamBase64: aiResult.heatmap || null,
+      overlayBase64: aiResult.overlay || null,
+      modelVersion:  aiResult.model_version || 'ResNet-50 v1',
+      processingMs:  duration, // Using the duration you already calculated
+      rawResponse:   aiResult,
+    });
+
     await createAuditLog({
       userId: req.user?._id,
       username: req.user?.username || 'anonymous',
@@ -65,7 +88,7 @@ async function uploadImage(req, res, next) {
         heatmap: aiResult.heatmap,
         overlay: aiResult.overlay,
         label: aiResult.prediction > 0.5 ? 'TB Positive' : 'TB Negative',
-        confidence: Math.round(Math.max(aiResult.prediction, 1 - aiResult.prediction) * 100),
+        confidence: confidencePercent,
         processingTimeMs: duration,
       },
     });
