@@ -13,6 +13,8 @@ const authRoutes = require('./routes/auth.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const auditRoutes = require('./routes/audit.routes');
 const healthRoutes = require('./routes/health.routes');
+const historyRoutes = require('./routes/history.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 
 const app = express();
 
@@ -52,6 +54,8 @@ app.use('/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/history',   historyRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // ─── 404 handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

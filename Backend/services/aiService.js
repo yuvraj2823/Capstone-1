@@ -1,6 +1,6 @@
 const axios = require('axios');
 const CircuitBreaker = require('opossum');
-const logger = require('../Backend/config/logger');
+const logger = require('../config/logger');
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-service:8000';
 const TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '30000', 10);
