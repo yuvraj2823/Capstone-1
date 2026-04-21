@@ -33,7 +33,6 @@ out/
 *.h5
 *.onnx
 ai-service/dataset/
-ai-service/models/tb_model.pth
 
 # Logs
 logs/
