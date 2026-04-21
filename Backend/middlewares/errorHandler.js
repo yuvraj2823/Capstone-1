@@ -1,4 +1,4 @@
-const logger = require('../config/logger');
+const logger = require('../Backend/config/logger');
 
 /**
  * Centralized error handler middleware.

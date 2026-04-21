@@ -1,7 +1,7 @@
 const sharp = require('sharp');
 const { predictTB } = require('../services/aiService');
 const { createAuditLog } = require('../services/auditService');
-const logger = require('../config/logger');
+const logger = require('../Backend/config/logger');
 
 /**
  * POST /api/upload

@@ -1,5 +1,5 @@
 const AuditLog = require('../models/AuditLog');
-const logger = require('../config/logger');
+const logger = require('../Backend/config/logger');
 
 /**
  * Creates an audit log entry.

@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { createAuditLog } = require('../services/auditService');
-const logger = require('../config/logger');
+const logger = require('../Backend/config/logger');
 
 /**
  * Generates a signed JWT for a given user ID.

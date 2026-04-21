@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const logger = require('../config/logger');
+const logger = require('../Backend/config/logger');
 
 /**
  * Verifies JWT and attaches user to req.user.
