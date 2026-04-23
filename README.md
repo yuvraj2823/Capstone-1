@@ -28,6 +28,8 @@ TB-Detect is built as a robust microservices-based system, containerized for sca
 ## Key Features
 - **AI Diagnostics**: High-accuracy TB detection using DenseNet-121 (Pre-trained on X-rays via TorchXRayVision).
 - **Explainable AI (XAI)**: Integrated **Grad-CAM** visualizes specifically where the AI sees indicators of TB.
+- **DICOM Support**: Native parsing and rendering of `.dcm` standard medical images directly in the browser.
+- **Advanced Radiological Viewer**: Interactive workstation-style image viewer with Brightness, Contrast, Zoom, Pan, Invert, and adjustable Heatmap Opacity sliders.
 - **Auto-Patient ID**: Dynamic generation of unique Patient IDs (`P-XXXXXX`) for every diagnostic session.
 - **Diagnostic Reports**: Instant PDF report generation with side-by-side original/heatmap/overlay grids.
 - **History & Analytics**: Complete record-keeping and an interactive dashboard for trend analysis.
