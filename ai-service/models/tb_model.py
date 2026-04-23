@@ -41,7 +41,8 @@ class TBClassifier(nn.Module):
         self._gradients = grad.detach()
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        fmaps = F.relu(self.features(x), inplace=True)
+        # Use inplace=False to keep the autograd graph intact for Grad-CAM
+        fmaps = F.relu(self.features(x), inplace=False)
 
         # Register backward hook to capture gradients
         if fmaps.requires_grad:
@@ -90,8 +91,10 @@ class TBModel:
         """
         Runs forward pass and captures Grad-CAM intermediate values.
 
-        Hooks into `denseblock3` (14×14 feature maps) for much better
-        spatial localization than the final 7×7 output layer.
+        Uses the model's own forward() which applies inplace=False ReLU on the
+        final feature map, keeping the autograd graph intact for backprop.
+        The _fwd_hook on denseblock3 captures the 14×14 spatial feature maps
+        before transition3, giving much better spatial localization than 7×7.
 
         Returns (prediction_score, feature_maps, gradients).
         """
@@ -105,30 +108,30 @@ class TBModel:
         _grads: dict = {}
 
         def _fwd_hook(module, input, output):
+            # Store a non-detached copy so gradients flow through it
             _fmaps['value'] = output
 
         def _bwd_hook(module, grad_input, grad_output):
+            # grad_output[0]: gradient w.r.t. the output of denseblock3
             _grads['value'] = grad_output[0].detach()
 
-        # Hook denseblock3 → 14×14 spatial resolution (much better than 7×7)
+        # Hook denseblock3 — 14×14 spatial resolution gives fine-grained localisation
         target_layer = self.net.features.denseblock3
         fwd_handle = target_layer.register_forward_hook(_fwd_hook)
         bwd_handle = target_layer.register_full_backward_hook(_bwd_hook)
 
         try:
             with torch.enable_grad():
-                image_tensor = image_tensor.requires_grad_(True)
+                # Use a fresh leaf tensor so autograd tracks it
+                x = image_tensor.detach().requires_grad_(True)
                 self.net.zero_grad()
 
-                # Full forward pass through the model
-                feat = F.relu(self.net.features(image_tensor), inplace=False)
-                pooled = self.net.avgpool(feat)
-                flat = torch.flatten(pooled, 1)
-                logit = self.net.classifier(flat)
-                score = torch.sigmoid(logit).squeeze()
+                # Go through the full model forward() — this uses inplace=False ReLU
+                # on the final feature block, preserving the gradient graph.
+                score, _ = self.net(x)
 
-                # Backprop INSIDE enable_grad context to capture real gradients
-                # Use score (post-sigmoid) for correct Grad-CAM w.r.t. predicted class
+                # Backprop on the raw score (pre-thresholding).
+                # Standard Grad-CAM: backprop the class score (not cross-entropy loss).
                 score.backward()
 
         finally:
@@ -138,5 +141,11 @@ class TBModel:
         feature_maps = _fmaps.get('value', torch.zeros(1, 1, 14, 14)).detach()
         gradients   = _grads.get('value', torch.zeros_like(feature_maps))
 
-        return float(score.item()), feature_maps, gradients
+        # Log gradient health for debugging
+        grad_max = gradients.abs().max().item()
+        logger.info(f"Grad-CAM: score={float(score.item()):.4f}, gradient abs-max={grad_max:.6f}")
+        if grad_max < 1e-8:
+            logger.warning("Gradients are near-zero! Heatmap will be uninformative. "
+                           "Possible cause: inplace ops in DenseNet blocks or no_grad context.")
 
+        return float(score.item()), feature_maps, gradients

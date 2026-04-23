@@ -38,21 +38,20 @@ def generate_gradcam(
         heatmap_b64:  Base64-encoded JPEG of the Grad-CAM heatmap.
         overlay_b64:  Base64-encoded JPEG of heatmap blended with original.
     """
-    # ─── Compute Grad-CAM weights ──────────────────────────────────────────────
-    # Global average pool of gradients → channel weights  (standard Grad-CAM)
+    # ─── Compute Grad-CAM weights (standard algorithm) ────────────────────────
+    # Global average pool gradients → one scalar weight per channel
     weights = gradients.mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
 
-    # Log gradient stats for debugging
-    grad_abs_max = gradients.abs().max().item()
-    logger.debug(f"Gradient abs-max: {grad_abs_max:.6f}, weight abs-max: {weights.abs().max().item():.6f}")
-    if grad_abs_max < 1e-8:
-        logger.warning("Gradients are near-zero — Grad-CAM will be uninformative. "
-                       "Check that backward() is called inside torch.enable_grad().")
-
-    # Weighted combination of feature maps, then single ReLU on the result
-    # (Standard Grad-CAM: do NOT ReLU the weights; only ReLU the final map)
+    # Weighted combination of feature maps — single ReLU on the result only.
+    # Do NOT ReLU the weights first; that is a non-standard deviation that
+    # throws away negatively-weighted channels and produces flat/uniform maps.
     cam = (weights * feature_maps).sum(dim=1, keepdim=False)  # (1, H', W')
-    cam = torch.relu(cam).squeeze().cpu().numpy()              # (H', W')
+    cam = torch.relu(cam)                                       # keep only positive activations
+    cam = cam.squeeze().cpu().numpy()                           # (H', W')  or scalar if H'=W'=1
+
+    # Guard: if feature map collapsed to a scalar (shouldn't happen with denseblock3)
+    if cam.ndim == 0:
+        cam = np.full((7, 7), float(cam))
 
     # ─── Suppress background noise via percentile thresholding ────────────────
     if cam.max() > 0:
@@ -61,9 +60,12 @@ def generate_gradcam(
         if cam.max() > 0:
             cam = cam / cam.max()
     else:
-        cam = np.zeros_like(cam)
+        # Gradients were zero or all-negative — return blank overlay
+        logger.warning("Grad-CAM produced a zero activation map. Returning blank heatmap.")
+        cam = np.zeros_like(cam, dtype=np.float32)
 
     # ─── Smooth to reduce speckle noise ───────────────────────────────────────
+    cam = cam.astype(np.float32)
     cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=2, sigmaY=2)
 
     # Re-normalise after blur
