@@ -21,7 +21,7 @@ def generate_gradcam(
     feature_maps: torch.Tensor,
     gradients: torch.Tensor,
     alpha: float = 0.45,
-    percentile_threshold: float = 70.0,
+    percentile_threshold: float = 60.0,
 ) -> Tuple[str, str]:
     """
     Generates Grad-CAM heatmap and blended overlay image.

@@ -89,34 +89,53 @@ class TBModel:
     ) -> Tuple[float, torch.Tensor, torch.Tensor]:
         """
         Runs forward pass and captures Grad-CAM intermediate values.
+
+        Hooks into `denseblock3` (14×14 feature maps) for much better
+        spatial localization than the final 7×7 output layer.
+
         Returns (prediction_score, feature_maps, gradients).
         """
         if self.net is None:
             raise RuntimeError("Model not loaded. Call load() first.")
 
         image_tensor = image_tensor.to(self.device)
-        image_tensor.requires_grad_(False)
 
-        # Enable gradient computation for feature maps
-        with torch.enable_grad():
-            feat = F.relu(self.net.features(image_tensor), inplace=False)
-            feat.retain_grad()  # ensure grad is kept even for non-leaf
-            # register hook
-            feat.register_hook(self.net.save_gradient)
+        # Storage for hook outputs
+        _fmaps: dict = {}
+        _grads: dict = {}
 
-            pooled = self.net.avgpool(feat)
-            flat = torch.flatten(pooled, 1)
-            logit = self.net.classifier(flat)
-            score = torch.sigmoid(logit).squeeze()
+        def _fwd_hook(module, input, output):
+            _fmaps['value'] = output
 
-        # Backprop to get gradients w.r.t. feature maps
-        self.net.zero_grad()
-        logit.backward()
+        def _bwd_hook(module, grad_input, grad_output):
+            _grads['value'] = grad_output[0].detach()
 
-        gradients = self.net._gradients
-        if gradients is None:
-            gradients = torch.zeros_like(feat)
+        # Hook denseblock3 → 14×14 spatial resolution (much better than 7×7)
+        target_layer = self.net.features.denseblock3
+        fwd_handle = target_layer.register_forward_hook(_fwd_hook)
+        bwd_handle = target_layer.register_full_backward_hook(_bwd_hook)
 
-        # Increase threshold for TB detection (only flag if very sure)
-        # We can also compare against the base XRV model here if needed
-        return float(score.item()), feat.detach(), gradients
+        try:
+            with torch.enable_grad():
+                image_tensor = image_tensor.requires_grad_(True)
+
+                # Full forward pass through the model
+                feat = F.relu(self.net.features(image_tensor), inplace=False)
+                pooled = self.net.avgpool(feat)
+                flat = torch.flatten(pooled, 1)
+                logit = self.net.classifier(flat)
+                score = torch.sigmoid(logit).squeeze()
+
+            # Backprop to get gradients w.r.t. denseblock3 feature maps
+            self.net.zero_grad()
+            logit.backward()
+
+        finally:
+            fwd_handle.remove()
+            bwd_handle.remove()
+
+        feature_maps = _fmaps.get('value', torch.zeros(1, 1, 14, 14)).detach()
+        gradients   = _grads.get('value', torch.zeros_like(feature_maps))
+
+        return float(score.item()), feature_maps, gradients
+
