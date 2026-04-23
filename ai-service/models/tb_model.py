@@ -118,6 +118,7 @@ class TBModel:
         try:
             with torch.enable_grad():
                 image_tensor = image_tensor.requires_grad_(True)
+                self.net.zero_grad()
 
                 # Full forward pass through the model
                 feat = F.relu(self.net.features(image_tensor), inplace=False)
@@ -126,9 +127,9 @@ class TBModel:
                 logit = self.net.classifier(flat)
                 score = torch.sigmoid(logit).squeeze()
 
-            # Backprop to get gradients w.r.t. denseblock3 feature maps
-            self.net.zero_grad()
-            logit.backward()
+                # Backprop INSIDE enable_grad context to capture real gradients
+                # Use score (post-sigmoid) for correct Grad-CAM w.r.t. predicted class
+                score.backward()
 
         finally:
             fwd_handle.remove()

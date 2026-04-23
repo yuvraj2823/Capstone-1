@@ -39,13 +39,18 @@ def generate_gradcam(
         overlay_b64:  Base64-encoded JPEG of heatmap blended with original.
     """
     # ─── Compute Grad-CAM weights ──────────────────────────────────────────────
-    # Global average pool of gradients → channel weights
+    # Global average pool of gradients → channel weights  (standard Grad-CAM)
     weights = gradients.mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
 
-    # Only keep positively-contributing channels (ReLU on weights too)
-    weights = torch.relu(weights)
+    # Log gradient stats for debugging
+    grad_abs_max = gradients.abs().max().item()
+    logger.debug(f"Gradient abs-max: {grad_abs_max:.6f}, weight abs-max: {weights.abs().max().item():.6f}")
+    if grad_abs_max < 1e-8:
+        logger.warning("Gradients are near-zero — Grad-CAM will be uninformative. "
+                       "Check that backward() is called inside torch.enable_grad().")
 
-    # Weighted combination of feature maps
+    # Weighted combination of feature maps, then single ReLU on the result
+    # (Standard Grad-CAM: do NOT ReLU the weights; only ReLU the final map)
     cam = (weights * feature_maps).sum(dim=1, keepdim=False)  # (1, H', W')
     cam = torch.relu(cam).squeeze().cpu().numpy()              # (H', W')
 
