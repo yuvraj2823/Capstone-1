@@ -1,9 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
-# Bump this label to force a full cache-bust rebuild (e.g. after code changes)
-LABEL build-version="2026-04-23-v3"
-
 # Install system dependencies
 # libgl1        – required by opencv-python-headless for cv2 color operations (Grad-CAM)
 # libglib2.0-0  – required by opencv for threading primitives
@@ -30,7 +27,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# --- Cache-bust: Change this version string to force a code-only rebuild ---
+LABEL build-version="2026-04-23-v4"
 COPY . .
 
 # Create models directory
