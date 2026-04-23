@@ -87,6 +87,28 @@ export default function HistoryPage() {
     }
   };
 
+  const handleView = async (id) => {
+    try {
+      const res = await api.get(`/history/${id}`);
+      const fullRecord = res.data;
+      navigate('/results', {
+        state: {
+          result: {
+            prediction: fullRecord.result === 'TB_DETECTED' ? fullRecord.confidence : 1 - fullRecord.confidence,
+            confidence: Math.round(fullRecord.confidence * 100),
+            processingTimeMs: fullRecord.processingMs,
+            heatmap: fullRecord.gradcamBase64,
+            overlay: fullRecord.overlayBase64,
+            label: fullRecord.result === 'TB_DETECTED' ? 'TB Positive' : 'TB Negative',
+          },
+          previewUrl: fullRecord.originalImageBase64 ? `data:image/jpeg;base64,${fullRecord.originalImageBase64}` : null,
+        }
+      });
+    } catch (err) {
+      alert('Failed to load record details.');
+    }
+  };
+
   const styles = {
     page:    { minHeight: '100vh', background: '#0a0a0f', color: '#e0e0ef', fontFamily: "'Inter', sans-serif", padding: '32px 24px' },
     header:  { maxWidth: 1100, margin: '0 auto 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 },
@@ -186,7 +208,7 @@ export default function HistoryPage() {
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button
                           style={styles.btn}
-                          onClick={e => { e.stopPropagation(); navigate('/results', { state: { record: rec } }); }}
+                          onClick={e => { e.stopPropagation(); handleView(rec._id); }}
                         >View</button>
                         <button
                           style={styles.btn}

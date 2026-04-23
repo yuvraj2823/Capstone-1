@@ -89,6 +89,14 @@ export default function UploadPage() {
                   <span className="text-muted text-sm">JPEG, PNG, WebP, BMP · Max 10 MB</span>
                 </p>
               )}
+              {preview && (
+                <img
+                  id="image-preview"
+                  src={preview}
+                  alt="Uploaded chest X-ray preview"
+                  className="preview-img"
+                />
+              )}
             </div>
 
             <input
@@ -100,15 +108,6 @@ export default function UploadPage() {
               onChange={(e) => handleFile(e.target.files[0])}
               aria-label="File input for chest X-ray"
             />
-
-            {preview && (
-              <img
-                id="image-preview"
-                src={preview}
-                alt="Uploaded chest X-ray preview"
-                className="preview-img"
-              />
-            )}
 
             <button
               id="analyze-btn"

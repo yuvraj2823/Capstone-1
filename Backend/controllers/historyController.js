@@ -24,12 +24,31 @@ exports.getHistory = async (req, res, next) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select('-gradcamBase64 -rawResponse')   // keep response lean
+        .select('-gradcamBase64 -overlayBase64 -originalImageBase64 -rawResponse')   // keep response lean
         .lean(),
       ScanRecord.countDocuments(filter),
     ]);
 
     res.json({ records, total, page, limit });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ────────────────────────────────────────────────────────────────
+   GET /api/history/:id
+   Fetch a single scan record.
+──────────────────────────────────────────────────────────────── */
+exports.getRecordById = async (req, res, next) => {
+  try {
+    const record = await ScanRecord.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    }).lean();
+
+    if (!record) return res.status(404).json({ message: 'Record not found' });
+
+    res.json(record);
   } catch (err) {
     next(err);
   }
@@ -144,7 +163,7 @@ exports.getReport = async (req, res, next) => {
     const row1Y = doc.y;
     
     renderGridImg('1. Original X-Ray', record.originalImageBase64, 50, row1Y);
-    renderGridImg('2. AI Heatmap', 50 + colWidth + colGap, row1Y);
+    renderGridImg('2. AI Heatmap', record.gradcamBase64, 50 + colWidth + colGap, row1Y);
 
     const row2Y = row1Y + imgHeight + 40;
     

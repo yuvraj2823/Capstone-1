@@ -3,11 +3,15 @@ const router   = express.Router();
 const { authenticate } = require('../middlewares/auth');   // your existing JWT middleware
 const {
   getHistory,
+  getRecordById,
   getReport,
 } = require('../controllers/historyController');
 
 // GET /api/history  — paginated scan history for the logged-in user
 router.get('/',         authenticate, getHistory);
+
+// GET /api/history/:id  — fetch a single scan record
+router.get('/:id', authenticate, getRecordById);
 
 // GET /api/history/:id/report  — stream a PDF diagnostic report
 router.get('/:id/report', authenticate, getReport);
