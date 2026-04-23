@@ -1,30 +1,51 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrediction } from '../hooks/usePrediction';
+import { parseDicom } from '../utils/dicom';
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp'];
-const MAX_SIZE_MB = 10;
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp', 'application/dicom', '']; // empty string for cases where browser doesn't know mimetype
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.dcm'];
+const MAX_SIZE_MB = 20; // DICOM files are often larger, up to 20MB
 
 export default function UploadPage() {
   const navigate = useNavigate();
   const { predict, loading, error } = usePrediction();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [isProcessingDicom, setIsProcessingDicom] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
 
-  function handleFile(selected) {
+  async function handleFile(selected) {
     if (!selected) return;
-    if (!ALLOWED_TYPES.includes(selected.type)) {
-      alert('Unsupported format. Please use JPEG, PNG, WebP, or BMP.');
+    
+    const isDicom = selected.name.toLowerCase().endsWith('.dcm');
+    const hasValidExtension = ALLOWED_EXTENSIONS.some(ext => selected.name.toLowerCase().endsWith(ext));
+    
+    if (!hasValidExtension && !ALLOWED_TYPES.includes(selected.type)) {
+      alert('Unsupported format. Please use JPEG, PNG, WebP, BMP, or DCM.');
       return;
     }
     if (selected.size > MAX_SIZE_MB * 1024 * 1024) {
       alert(`File too large. Maximum size is ${MAX_SIZE_MB} MB.`);
       return;
     }
-    setFile(selected);
-    setPreview(URL.createObjectURL(selected));
+    
+    if (isDicom) {
+      setIsProcessingDicom(true);
+      try {
+        const { file: jpgFile, previewUrl } = await parseDicom(selected);
+        setFile(jpgFile);
+        setPreview(previewUrl);
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        setIsProcessingDicom(false);
+      }
+    } else {
+      setFile(selected);
+      setPreview(URL.createObjectURL(selected));
+    }
   }
 
   const onDrop = useCallback((e) => {
@@ -86,7 +107,7 @@ export default function UploadPage() {
               ) : (
                 <p className="drop-zone__text">
                   <strong>Click to browse</strong> or drag & drop<br />
-                  <span className="text-muted text-sm">JPEG, PNG, WebP, BMP · Max 10 MB</span>
+                  <span className="text-muted text-sm">JPEG, PNG, WebP, BMP, DCM · Max {MAX_SIZE_MB} MB</span>
                 </p>
               )}
               {preview && (
@@ -103,7 +124,7 @@ export default function UploadPage() {
               ref={inputRef}
               id="file-input"
               type="file"
-              accept={ALLOWED_TYPES.join(',')}
+              accept={[...ALLOWED_TYPES, ...ALLOWED_EXTENSIONS].join(',')}
               style={{ display: 'none' }}
               onChange={(e) => handleFile(e.target.files[0])}
               aria-label="File input for chest X-ray"
@@ -114,9 +135,9 @@ export default function UploadPage() {
               type="submit"
               className="btn btn-primary btn-lg mt-4"
               style={{ width: '100%', justifyContent: 'center' }}
-              disabled={!file || loading}
+              disabled={!file || loading || isProcessingDicom}
             >
-              {loading ? 'Analyzing…' : 'Analyze X-Ray'}
+              {isProcessingDicom ? 'Processing DICOM...' : loading ? 'Analyzing…' : 'Analyze X-Ray'}
             </button>
           </form>
         </div>
@@ -127,8 +148,8 @@ export default function UploadPage() {
           <ol style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
               ['1', 'Upload a PA chest X-ray image'],
-              ['2', 'Supported: JPEG, PNG, WebP, BMP'],
-              ['3', 'Maximum file size: 10 MB'],
+              ['2', 'Supported: JPEG, PNG, WebP, BMP, DCM'],
+              ['3', `Maximum file size: ${MAX_SIZE_MB} MB`],
               ['4', 'Click "Analyze X-Ray" to run the AI model'],
               ['5', 'View prediction score and Grad-CAM explainability heatmap'],
             ].map(([num, text]) => (
