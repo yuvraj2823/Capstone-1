@@ -40,7 +40,10 @@ def generate_gradcam(
     """
     # ─── Compute Grad-CAM weights (standard algorithm) ────────────────────────
     # Global average pool gradients → one scalar weight per channel
-    weights = gradients.mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
+    # Positive-Influence Weighting: Only consider features that positively 
+    # contribute to the score. This suppresses structural noise from the 
+    # image frame, shoulders, and neck.
+    weights = torch.relu(gradients).mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
 
     # Weighted combination of feature maps — single ReLU on the result only.
     # Do NOT ReLU the weights first; that is a non-standard deviation that
@@ -66,10 +69,10 @@ def generate_gradcam(
         logger.warning("Grad-CAM produced a zero activation map. Returning blank heatmap.")
         cam = np.zeros_like(cam, dtype=np.float32)
 
-    # ─── Soften edges (Fine-tuned for sharpness) ─────────────────────────────
+    # ─── Professional Diagnostic Softening ──────────────────────────────────
     cam = cam.astype(np.float32)
-    # sigma=0.8 removes grid artifacts while keeping diagnostic features sharp
-    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=0.8, sigmaY=0.8)
+    # sigma=3.0 merges fragmented activations into cohesive diagnostic regions.
+    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=3.0, sigmaY=3.0)
     
     # Re-normalise (safeguard)
     if cam.max() > 0:
