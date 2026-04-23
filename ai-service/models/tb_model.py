@@ -50,8 +50,8 @@ class TBClassifier(nn.Module):
 
         pooled = self.avgpool(fmaps)
         flat = torch.flatten(pooled, 1)
-        out = self.classifier(flat)
-        return torch.sigmoid(out).squeeze(1), fmaps
+        out = self.classifier(flat).squeeze(1)
+        return torch.sigmoid(out), out, fmaps
 
 
 class TBModel:
@@ -112,12 +112,12 @@ class TBModel:
             _fmaps['value'] = output
 
         def _bwd_hook(module, grad_input, grad_output):
-            # grad_output[0]: gradient w.r.t. the output of denseblock4
+            # grad_output[0]: gradient w.r.t. the output of norm5
             _grads['value'] = grad_output[0].detach()
 
-        # Hook denseblock4 — The final convolutional block provides the most 
-        # semantically relevant features for classification decisions.
-        target_layer = self.net.features.denseblock4
+        # Hook norm5 — The very last layer of the feature extractor provides
+        # the most integrated semantic representation before global pooling.
+        target_layer = self.net.features.norm5
         fwd_handle = target_layer.register_forward_hook(_fwd_hook)
         bwd_handle = target_layer.register_full_backward_hook(_bwd_hook)
 
@@ -129,25 +129,27 @@ class TBModel:
 
                 # Go through the full model forward() — this uses inplace=False ReLU
                 # on the final feature block, preserving the gradient graph.
-                score, _ = self.net(x)
+                # Return both prob (sigmoid) and logit (raw)
+                prob, logit, _ = self.net(x)
 
-                # Backprop on the raw score (pre-thresholding).
-                # Standard Grad-CAM: backprop the class score (not cross-entropy loss).
-                score.backward()
+                # Backprop on the logit (raw score).
+                # This prevents gradient vanishing caused by sigmoid saturation,
+                # leading to much more accurate and stable heatmaps.
+                logit.backward()
 
         finally:
             fwd_handle.remove()
             bwd_handle.remove()
 
-        # denseblock4 output is 7x7
+        # norm5 output is 7x7
         feature_maps = _fmaps.get('value', torch.zeros(1, 1, 7, 7)).detach()
         gradients   = _grads.get('value', torch.zeros_like(feature_maps))
 
         # Log gradient health for debugging
         grad_max = gradients.abs().max().item()
-        logger.info(f"Grad-CAM: score={float(score.item()):.4f}, gradient abs-max={grad_max:.6f}")
+        logger.info(f"Grad-CAM: prob={float(prob.item()):.4f}, logit={float(logit.item()):.4f}, gradient abs-max={grad_max:.6f}")
         if grad_max < 1e-8:
             logger.warning("Gradients are near-zero! Heatmap will be uninformative. "
                            "Possible cause: inplace ops in DenseNet blocks or no_grad context.")
 
-        return float(score.item()), feature_maps, gradients
+        return float(prob.item()), feature_maps, gradients
