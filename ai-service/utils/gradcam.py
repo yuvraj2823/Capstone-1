@@ -49,18 +49,16 @@ def generate_gradcam(
     cam = torch.relu(cam)                                       # keep only positive activations
     cam = cam.squeeze().cpu().numpy()                           # (H', W')  or scalar if H'=W'=1
 
-    # Guard: if feature map collapsed to a scalar (shouldn't happen with denseblock3)
+    # Guard: if feature map collapsed to a scalar (shouldn't happen with the last conv layer)
     if cam.ndim == 0:
-        cam = np.full((7, 7), float(cam))
+        cam = np.full((14, 14), float(cam))
 
-    # ─── Professional Noise Suppression (Peak-Intensity Masking) ─────────────
-    if cam.max() > 1e-10:
-        cam = cam / cam.max()
-        # Keep only activations that are at least 40% as strong as the peak.
-        # This is more robust than percentile thresholding for noisy gradients.
-        cam = np.where(cam >= 0.4, cam, 0.0)
-        
-        # Re-normalise after masking
+    # ─── Suppress background noise via percentile thresholding ────────────────
+    if cam.max() > 0:
+        # Use a high threshold (60th percentile) to suppress background noise
+        # and focus only on the most significant activations.
+        threshold_val = np.percentile(cam, percentile_threshold if percentile_threshold else 60.0)
+        cam = np.where(cam >= threshold_val, cam, 0.0)
         if cam.max() > 0:
             cam = cam / cam.max()
     else:
@@ -68,10 +66,10 @@ def generate_gradcam(
         logger.warning("Grad-CAM produced a zero activation map. Returning blank heatmap.")
         cam = np.zeros_like(cam, dtype=np.float32)
 
-    # ─── Smooth edges (Standard professional softening) ──────────────────────
+    # ─── Soften edges (Fine-tuned for sharpness) ─────────────────────────────
     cam = cam.astype(np.float32)
-    # sigma=2.0 creates the smooth, clinical "heat" look and hides grid lines.
-    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=2.0, sigmaY=2.0)
+    # sigma=0.8 removes grid artifacts while keeping diagnostic features sharp
+    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=0.8, sigmaY=0.8)
     
     # Re-normalise (safeguard)
     if cam.max() > 0:
@@ -79,8 +77,8 @@ def generate_gradcam(
 
     # ─── Resize to match original image ───────────────────────────────────────
     h, w = original_np.shape[:2]
-    # Lanczos resizing provides the smoothest transitions for diagnostic maps
-    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LANCZOS4)
+    # Cubic provides high quality upsampling without ringing artifacts
+    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_CUBIC)
     cam_uint8 = np.uint8(255 * cam_resized)
 
     # ─── Apply colour map (TURBO: better perceptual clarity than JET) ─────────
