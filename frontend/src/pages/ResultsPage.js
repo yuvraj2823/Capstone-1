@@ -175,20 +175,40 @@ export default function ResultsPage() {
         <button
           id="download-report-btn"
           className="btn btn-ghost"
-          onClick={() => {
-            const report = {
-              timestamp: new Date().toISOString(),
-              prediction: result.prediction,
-              label: result.label || (isPositive ? 'TB Positive' : 'TB Negative'),
-              confidence,
-              processingTimeMs: result.processingTimeMs,
-            };
-            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `tb-report-${Date.now()}.json`;
-            a.click();
+          onClick={async () => {
+            if (result.id) {
+              try {
+                // Import api dynamically or rely on a top-level import
+                const api = require('../services/api').default;
+                const response = await api.get(`/history/${result.id}/report`, {
+                  responseType: 'blob',
+                });
+                
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `TB-Report-${result.id}.pdf`);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+              } catch (err) {
+                alert('Failed to download PDF report. Try again later.');
+              }
+            } else {
+              const report = {
+                timestamp: new Date().toISOString(),
+                prediction: result.prediction,
+                label: result.label || (isPositive ? 'TB Positive' : 'TB Negative'),
+                confidence,
+                processingTimeMs: result.processingTimeMs,
+              };
+              const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `tb-report-${Date.now()}.json`;
+              a.click();
+            }
           }}
         >
           Download Report

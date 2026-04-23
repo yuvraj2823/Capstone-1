@@ -54,7 +54,7 @@ async function uploadImage(req, res, next) {
     const confidencePercent = Math.round(confidenceScore * 100);
     const dbResultLabel = aiResult.prediction > 0.75 ? 'TB_DETECTED' : 'NORMAL';
 
-    await ScanRecord.create({
+    const newRecord = await ScanRecord.create({
       userId:        req.user?._id, // Used optional chaining in case user isn't populated
       patientId:     req.body.patientId || `P-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       filename:      originalname || 'unknown',
@@ -84,6 +84,7 @@ async function uploadImage(req, res, next) {
     res.status(200).json({
       success: true,
       data: {
+        id: newRecord._id,
         prediction: aiResult.prediction,
         heatmap: aiResult.heatmap,
         overlay: aiResult.overlay,

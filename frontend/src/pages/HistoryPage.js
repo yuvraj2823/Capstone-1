@@ -94,6 +94,7 @@ export default function HistoryPage() {
       navigate('/results', {
         state: {
           result: {
+            id: fullRecord._id,
             prediction: fullRecord.result === 'TB_DETECTED' ? fullRecord.confidence : 1 - fullRecord.confidence,
             confidence: Math.round(fullRecord.confidence * 100),
             processingTimeMs: fullRecord.processingMs,
