@@ -21,7 +21,7 @@ def generate_gradcam(
     feature_maps: torch.Tensor,
     gradients: torch.Tensor,
     alpha: float = 0.45,
-    percentile_threshold: float = 40.0,
+    percentile_threshold: float = 60.0,
 ) -> Tuple[str, str]:
     """
     Generates Grad-CAM heatmap and blended overlay image.
@@ -53,11 +53,14 @@ def generate_gradcam(
     if cam.ndim == 0:
         cam = np.full((7, 7), float(cam))
 
-    # ─── Suppress background noise via percentile thresholding ────────────────
-    if cam.max() > 0:
-        # Use a very low threshold (10th percentile) to avoid masking real signals
-        threshold_val = np.percentile(cam, percentile_threshold if percentile_threshold else 10.0)
-        cam = np.where(cam >= threshold_val, cam, 0.0)
+    # ─── Professional Noise Suppression (Peak-Intensity Masking) ─────────────
+    if cam.max() > 1e-10:
+        cam = cam / cam.max()
+        # Keep only activations that are at least 40% as strong as the peak.
+        # This is more robust than percentile thresholding for noisy gradients.
+        cam = np.where(cam >= 0.4, cam, 0.0)
+        
+        # Re-normalise after masking
         if cam.max() > 0:
             cam = cam / cam.max()
     else:
@@ -65,11 +68,10 @@ def generate_gradcam(
         logger.warning("Grad-CAM produced a zero activation map. Returning blank heatmap.")
         cam = np.zeros_like(cam, dtype=np.float32)
 
-    # ─── Soften edges (as requested to not be "too smooth") ──────────────────
+    # ─── Smooth edges (Standard professional softening) ──────────────────────
     cam = cam.astype(np.float32)
-    # sigma=0.3 provides a very subtle softening to hide grid artifacts
-    # without making the map "fuzzy" or "too smooth".
-    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=0.3, sigmaY=0.3)
+    # sigma=2.0 creates the smooth, clinical "heat" look and hides grid lines.
+    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=2.0, sigmaY=2.0)
     
     # Re-normalise (safeguard)
     if cam.max() > 0:
@@ -77,8 +79,8 @@ def generate_gradcam(
 
     # ─── Resize to match original image ───────────────────────────────────────
     h, w = original_np.shape[:2]
-    # Cubic is standard for Grad-CAM overlays
-    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_CUBIC)
+    # Lanczos resizing provides the smoothest transitions for diagnostic maps
+    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LANCZOS4)
     cam_uint8 = np.uint8(255 * cam_resized)
 
     # ─── Apply colour map (TURBO: better perceptual clarity than JET) ─────────
