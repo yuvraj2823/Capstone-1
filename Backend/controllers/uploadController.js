@@ -63,7 +63,7 @@ async function uploadImage(req, res, next) {
       originalImageBase64: imageBase64,
       gradcamBase64: aiResult.heatmap || null,
       overlayBase64: aiResult.overlay || null,
-      modelVersion:  aiResult.model_version || 'ResNet-50 v1',
+      modelVersion:  aiResult.model_version || 'DenseNet-121 v1.0',
       processingMs:  duration, // Using the duration you already calculated
       rawResponse:   aiResult,
     });

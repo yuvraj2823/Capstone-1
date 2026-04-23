@@ -39,6 +39,7 @@ function ConfidenceBar({ value }) {
 export default function HistoryPage() {
   const navigate = useNavigate();
   const [records, setRecords]     = useState([]);
+  const [fullRecords, setFullRecords] = useState({});
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
   const [loading, setLoading]     = useState(true);
@@ -107,6 +108,24 @@ export default function HistoryPage() {
       });
     } catch (err) {
       alert('Failed to load record details.');
+    }
+  };
+
+  const handleExpand = async (id) => {
+    if (expanded === id) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(id);
+    
+    // Fetch full record if not cached
+    if (!fullRecords[id]) {
+      try {
+        const res = await api.get(`/history/${id}`);
+        setFullRecords(prev => ({ ...prev, [id]: res.data }));
+      } catch (err) {
+        console.error("Failed to fetch full record details", err);
+      }
     }
   };
 
@@ -189,7 +208,7 @@ export default function HistoryPage() {
                   <tr
                     key={rec._id}
                     style={{ cursor: 'pointer', background: expanded === rec._id ? '#0d0d1a' : 'transparent' }}
-                    onClick={() => setExpanded(expanded === rec._id ? null : rec._id)}
+                    onClick={() => handleExpand(rec._id)}
                   >
                     <td style={{ ...styles.td, color: '#4a4a6a', fontFamily: 'monospace' }}>
                       {(page - 1) * limit + i + 1}
@@ -220,30 +239,38 @@ export default function HistoryPage() {
                   </tr>
 
                   {/* Expanded detail row */}
-                  {expanded === rec._id && (
-                    <tr key={`${rec._id}-exp`}>
-                      <td colSpan={6} style={{ padding: 0, background: '#0d0d1a' }}>
-                        <div style={styles.expand}>
-                          <div>
-                            <div style={{ fontSize: 11, color: '#6b6b8a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Grad-CAM Heatmap</div>
-                            {rec.gradcamUrl ? (
-                              <img src={rec.gradcamUrl} alt="Grad-CAM" style={{ width: '100%', maxWidth: 280, borderRadius: 8, border: '1px solid #2a2a45' }} />
-                            ) : (
-                              <div style={{ color: '#4a4a6a', fontSize: 13 }}>No heatmap available</div>
-                            )}
+                  {expanded === rec._id && (() => {
+                    const full = fullRecords[rec._id];
+                    const heatmapSrc = full?.gradcamBase64
+                      ? `data:image/jpeg;base64,${full.gradcamBase64}`
+                      : null;
+                    return (
+                      <tr key={`${rec._id}-exp`}>
+                        <td colSpan={6} style={{ padding: 0, background: '#0d0d1a' }}>
+                          <div style={styles.expand}>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#6b6b8a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Grad-CAM Heatmap</div>
+                              {!full ? (
+                                <div style={{ color: '#6b6b8a', fontSize: 13 }}>Loading...</div>
+                              ) : heatmapSrc ? (
+                                <img src={heatmapSrc} alt="Grad-CAM" style={{ width: '100%', maxWidth: 280, borderRadius: 8, border: '1px solid #2a2a45' }} />
+                              ) : (
+                                <div style={{ color: '#4a4a6a', fontSize: 13 }}>No heatmap available</div>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              <Detail label="Scan ID"        value={rec._id} mono />
+                              <Detail label="Patient ID"     value={full?.patientId || rec.patientId || '—'} />
+                              <Detail label="Model version"  value={full?.modelVersion || rec.modelVersion || 'DenseNet-121 v1.0'} />
+                              <Detail label="Processing time" value={rec.processingMs ? `${rec.processingMs} ms` : '—'} />
+                              <Detail label="Top class"      value={rec.result || '—'} />
+                              <Detail label="Raw confidence" value={rec.confidence != null ? `${(rec.confidence * 100).toFixed(2)}%` : '—'} />
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            <Detail label="Scan ID"        value={rec._id} mono />
-                            <Detail label="Patient ID"     value={rec.patientId || '—'} />
-                            <Detail label="Model version"  value={rec.modelVersion || 'ResNet-50 v1'} />
-                            <Detail label="Processing time" value={rec.processingMs ? `${rec.processingMs} ms` : '—'} />
-                            <Detail label="Top class"      value={rec.result || '—'} />
-                            <Detail label="Raw confidence" value={rec.confidence != null ? `${(rec.confidence * 100).toFixed(2)}%` : '—'} />
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
+                        </td>
+                      </tr>
+                    );
+                  })()}
                 </>
               ))}
             </tbody>
