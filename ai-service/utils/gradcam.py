@@ -29,7 +29,7 @@ def generate_gradcam(
     Args:
         original_np:          uint8 numpy array (H, W, 3) – original resized image.
         feature_maps:         Tensor (1, C, H', W') – last conv feature maps.
-        gradients:            Tensor (1, C, H', W') – gradients w.r.t. the output of norm5
+        gradients:            Tensor (1, C, H', W') – gradients w.r.t. the output of denseblock3
         alpha:                Blend factor for overlay (0 = only original, 1 = only heatmap).
         percentile_threshold: Activations below this percentile are zeroed out to suppress
                               background noise (hands, edges, etc.).
@@ -49,7 +49,7 @@ def generate_gradcam(
     cam = torch.relu(cam)                                       # keep only positive activations
     cam = cam.squeeze().cpu().numpy()                           # (H', W')  or scalar if H'=W'=1
 
-    # Guard: if feature map collapsed to a scalar (shouldn't happen with norm5)
+    # Guard: if feature map collapsed to a scalar (shouldn't happen with denseblock3)
     if cam.ndim == 0:
         cam = np.full((7, 7), float(cam))
 
@@ -65,8 +65,11 @@ def generate_gradcam(
         logger.warning("Grad-CAM produced a zero activation map. Returning blank heatmap.")
         cam = np.zeros_like(cam, dtype=np.float32)
 
-    # ─── No Blur (as requested) ──────────────────────────────────────────────
+    # ─── Soften edges (as requested to not be "too smooth") ──────────────────
     cam = cam.astype(np.float32)
+    # sigma=0.3 provides a very subtle softening to hide grid artifacts
+    # without making the map "fuzzy" or "too smooth".
+    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=0.3, sigmaY=0.3)
     
     # Re-normalise (safeguard)
     if cam.max() > 0:
@@ -74,8 +77,8 @@ def generate_gradcam(
 
     # ─── Resize to match original image ───────────────────────────────────────
     h, w = original_np.shape[:2]
-    # Use Linear for a standard Grad-CAM look without Lanczos artifacts
-    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LINEAR)
+    # Cubic is standard for Grad-CAM overlays
+    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_CUBIC)
     cam_uint8 = np.uint8(255 * cam_resized)
 
     # ─── Apply colour map (TURBO: better perceptual clarity than JET) ─────────

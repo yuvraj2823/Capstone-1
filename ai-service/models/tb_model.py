@@ -112,12 +112,12 @@ class TBModel:
             _fmaps['value'] = output
 
         def _bwd_hook(module, grad_input, grad_output):
-            # grad_output[0]: gradient w.r.t. the output of norm5
+            # grad_output[0]: gradient w.r.t. the output of denseblock3
             _grads['value'] = grad_output[0].detach()
 
-        # Hook norm5 — The very last layer of the feature extractor provides
-        # the most integrated semantic representation before global pooling.
-        target_layer = self.net.features.norm5
+        # Hook denseblock3 — 14x14 spatial resolution provides much finer 
+        # localization of diagnostic features than the final 7x7 map.
+        target_layer = self.net.features.denseblock3
         fwd_handle = target_layer.register_forward_hook(_fwd_hook)
         bwd_handle = target_layer.register_full_backward_hook(_bwd_hook)
 
@@ -141,8 +141,8 @@ class TBModel:
             fwd_handle.remove()
             bwd_handle.remove()
 
-        # norm5 output is 7x7
-        feature_maps = _fmaps.get('value', torch.zeros(1, 1, 7, 7)).detach()
+        # denseblock3 output is 14x14
+        feature_maps = _fmaps.get('value', torch.zeros(1, 1, 14, 14)).detach()
         gradients   = _grads.get('value', torch.zeros_like(feature_maps))
 
         # Log gradient health for debugging

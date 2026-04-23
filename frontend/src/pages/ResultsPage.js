@@ -115,7 +115,22 @@ export default function ResultsPage() {
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="btn btn-ghost" style={{ padding: '6px 12px' }} onClick={() => handleZoom(0.2)} title="Zoom In">+</button>
             <button className="btn btn-ghost" style={{ padding: '6px 12px' }} onClick={() => handleZoom(-0.2)} title="Zoom Out">-</button>
-            <button className="btn btn-ghost" style={{ padding: '6px 12px' }} onClick={() => setControls(c => ({...c, zoom: 1, panX: 0, panY: 0}))} title="Reset Pan/Zoom">Reset</button>
+            <button 
+              className="btn btn-ghost" 
+              style={{ padding: '6px 12px' }} 
+              onClick={() => setControls({
+                brightness: 100,
+                contrast: 100,
+                zoom: 1,
+                panX: 0,
+                panY: 0,
+                invert: false,
+                heatmapOpacity: 0.5,
+              })} 
+              title="Reset All Controls"
+            >
+              Reset
+            </button>
             <button className="btn btn-ghost" style={{ padding: '6px 12px', background: controls.invert ? 'var(--color-primary)' : 'transparent', color: controls.invert ? '#000' : 'var(--color-muted)' }} onClick={() => setControls(c => ({...c, invert: !c.invert}))} title="Invert Colors">Invert</button>
           </div>
           
