@@ -20,89 +20,51 @@ def generate_gradcam(
     original_np: np.ndarray,
     feature_maps: torch.Tensor,
     gradients: torch.Tensor,
-    alpha: float = 0.45,
-    percentile_threshold: float = 60.0,
+    alpha: float = 0.4,
 ) -> Tuple[str, str]:
     """
     Generates Grad-CAM heatmap and blended overlay image.
 
     Args:
-        original_np:          uint8 numpy array (H, W, 3) – original resized image.
-        feature_maps:         Tensor (1, C, H', W') – last conv feature maps.
-        gradients:            Tensor (1, C, H', W') – gradients w.r.t. the output of denseblock3
-        alpha:                Blend factor for overlay (0 = only original, 1 = only heatmap).
-        percentile_threshold: Activations below this percentile are zeroed out to suppress
-                              background noise (hands, edges, etc.).
+        original_np:   uint8 numpy array (H, W, 3) – original resized image.
+        feature_maps:  Tensor (1, C, H', W') – last conv feature maps.
+        gradients:     Tensor (1, C, H', W') – gradients w.r.t. feature maps.
+        alpha:         Blend factor for overlay (0 = only original, 1 = only heatmap).
 
     Returns:
         heatmap_b64:  Base64-encoded JPEG of the Grad-CAM heatmap.
         overlay_b64:  Base64-encoded JPEG of heatmap blended with original.
     """
-    # ─── Compute Grad-CAM weights (standard algorithm) ────────────────────────
-    # Global average pool gradients → one scalar weight per channel
-    # Positive-Influence Weighting: Only consider features that positively 
-    # contribute to the score. This suppresses structural noise from the 
-    # image frame, shoulders, and neck.
-    weights = torch.relu(gradients).mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
+    # ─── Compute Grad-CAM weights ──────────────────────────────────────────────
+    # Global average pool of gradients → channel weights
+    weights = gradients.mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
 
-    # Weighted combination of feature maps — single ReLU on the result only.
-    # Do NOT ReLU the weights first; that is a non-standard deviation that
-    # throws away negatively-weighted channels and produces flat/uniform maps.
+    # Weighted combination of feature maps
     cam = (weights * feature_maps).sum(dim=1, keepdim=False)  # (1, H', W')
-    cam = torch.relu(cam)                                       # keep only positive activations
-    cam = cam.squeeze().cpu().numpy()                           # (H', W')  or scalar if H'=W'=1
+    cam = torch.relu(cam).squeeze().cpu().numpy()              # (H', W')
 
-    # Guard: if feature map collapsed to a scalar (shouldn't happen with the last conv layer)
-    if cam.ndim == 0:
-        cam = np.full((14, 14), float(cam))
-
-    # ─── Suppress background noise via percentile thresholding ────────────────
-    if cam.max() > 0:
-        # Use a high threshold (60th percentile) to suppress background noise
-        # and focus only on the most significant activations.
-        threshold_val = np.percentile(cam, percentile_threshold if percentile_threshold else 60.0)
-        cam = np.where(cam >= threshold_val, cam, 0.0)
-        if cam.max() > 0:
-            cam = cam / cam.max()
-    else:
-        # Gradients were zero or all-negative — return blank overlay
-        logger.warning("Grad-CAM produced a zero activation map. Returning blank heatmap.")
-        cam = np.zeros_like(cam, dtype=np.float32)
-
-    # ─── Professional Diagnostic Softening ──────────────────────────────────
-    cam = cam.astype(np.float32)
-    # sigma=3.0 merges fragmented activations into cohesive diagnostic regions.
-    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=3.0, sigmaY=3.0)
-    
-    # Re-normalise (safeguard)
+    # ─── Normalise and resize ─────────────────────────────────────────────────
     if cam.max() > 0:
         cam = cam / cam.max()
+    else:
+        cam = np.zeros_like(cam)
 
-    # ─── Resize to match original image ───────────────────────────────────────
     h, w = original_np.shape[:2]
-    # Cubic provides high quality upsampling without ringing artifacts
-    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_CUBIC)
+    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LINEAR)
     cam_uint8 = np.uint8(255 * cam_resized)
 
-    # ─── Apply colour map (TURBO: better perceptual clarity than JET) ─────────
-    heatmap_bgr = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_TURBO)
+    # ─── Apply colour map ─────────────────────────────────────────────────────
+    heatmap_bgr = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)
     heatmap_rgb = cv2.cvtColor(heatmap_bgr, cv2.COLOR_BGR2RGB)
 
-    # ─── Overlay: only blend where heatmap is strong (mask-based) ────────────
-    # Create a strength mask so low-activation background stays clear
-    strength_mask = cam_resized[..., np.newaxis]  # (H, W, 1)
-    blended = (
-        (1 - alpha * strength_mask) * original_np.astype(np.float32)
-        + (alpha * strength_mask) * heatmap_rgb.astype(np.float32)
-    )
-    overlay_rgb = np.clip(blended, 0, 255).astype(np.uint8)
+    # ─── Overlay ──────────────────────────────────────────────────────────────
+    overlay_rgb = cv2.addWeighted(original_np, 1 - alpha, heatmap_rgb, alpha, 0)
 
     # ─── Encode to base64 JPEG ────────────────────────────────────────────────
     heatmap_b64 = _numpy_to_b64_jpeg(heatmap_rgb)
     overlay_b64 = _numpy_to_b64_jpeg(overlay_rgb)
 
     return heatmap_b64, overlay_b64
-
 
 
 def _numpy_to_b64_jpeg(arr: np.ndarray, quality: int = 90) -> str:

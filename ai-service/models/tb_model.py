@@ -41,8 +41,7 @@ class TBClassifier(nn.Module):
         self._gradients = grad.detach()
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Use inplace=False to keep the autograd graph intact for Grad-CAM
-        fmaps = F.relu(self.features(x), inplace=False)
+        fmaps = F.relu(self.features(x), inplace=True)
 
         # Register backward hook to capture gradients
         if fmaps.requires_grad:
@@ -50,8 +49,8 @@ class TBClassifier(nn.Module):
 
         pooled = self.avgpool(fmaps)
         flat = torch.flatten(pooled, 1)
-        out = self.classifier(flat).squeeze(1)
-        return torch.sigmoid(out), out, fmaps
+        out = self.classifier(flat)
+        return torch.sigmoid(out).squeeze(1), fmaps
 
 
 class TBModel:
@@ -90,65 +89,34 @@ class TBModel:
     ) -> Tuple[float, torch.Tensor, torch.Tensor]:
         """
         Runs forward pass and captures Grad-CAM intermediate values.
-
-        Uses the model's own forward() which applies inplace=False ReLU on the
-        final feature map, keeping the autograd graph intact for backprop.
-        The _fwd_hook on denseblock3 captures the 14×14 spatial feature maps
-        before transition3, giving much better spatial localization than 7×7.
-
         Returns (prediction_score, feature_maps, gradients).
         """
         if self.net is None:
             raise RuntimeError("Model not loaded. Call load() first.")
 
         image_tensor = image_tensor.to(self.device)
+        image_tensor.requires_grad_(False)
 
-        # Storage for hook outputs
-        _fmaps: dict = {}
-        _grads: dict = {}
+        # Enable gradient computation for feature maps
+        with torch.enable_grad():
+            feat = F.relu(self.net.features(image_tensor), inplace=False)
+            feat.retain_grad()  # ensure grad is kept even for non-leaf
+            # register hook
+            feat.register_hook(self.net.save_gradient)
 
-        def _fwd_hook(module, input, output):
-            # Store a non-detached copy so gradients flow through it
-            _fmaps['value'] = output
+            pooled = self.net.avgpool(feat)
+            flat = torch.flatten(pooled, 1)
+            logit = self.net.classifier(flat)
+            score = torch.sigmoid(logit).squeeze()
 
-        def _bwd_hook(module, grad_input, grad_output):
-            # grad_output[0]: gradient w.r.t. the output of denseblock4
-            _grads['value'] = grad_output[0].detach()
+        # Backprop to get gradients w.r.t. feature maps
+        self.net.zero_grad()
+        logit.backward()
 
-        # Hook denseblock4 — This final dense block provides the most integrated
-        # semantic representation for accurate diagnostic localization.
-        target_layer = self.net.features.denseblock4
-        fwd_handle = target_layer.register_forward_hook(_fwd_hook)
-        bwd_handle = target_layer.register_full_backward_hook(_bwd_hook)
+        gradients = self.net._gradients
+        if gradients is None:
+            gradients = torch.zeros_like(feat)
 
-        try:
-            with torch.enable_grad():
-                # Use a fresh leaf tensor so autograd tracks it
-                x = image_tensor.detach().requires_grad_(True)
-                self.net.zero_grad()
-
-                # Go through the full model forward() — this uses inplace=False ReLU
-                # on the final feature block, preserving the gradient graph.
-                # Return both prob (sigmoid) and logit (raw)
-                prob, logit, _ = self.net(x)
-
-                # Backprop on the logit (raw score).
-                # This prevents gradient vanishing caused by sigmoid saturation.
-                logit.backward()
-
-        finally:
-            fwd_handle.remove()
-            bwd_handle.remove()
-
-        # denseblock4 output is 7x7
-        feature_maps = _fmaps.get('value', torch.zeros(1, 1, 7, 7)).detach()
-        gradients   = _grads.get('value', torch.zeros_like(feature_maps))
-
-        # Log gradient health for debugging
-        grad_max = gradients.abs().max().item()
-        logger.info(f"Grad-CAM: prob={float(prob.item()):.4f}, logit={float(logit.item()):.4f}, gradient abs-max={grad_max:.6f}")
-        if grad_max < 1e-8:
-            logger.warning("Gradients are near-zero! Heatmap will be uninformative. "
-                           "Possible cause: inplace ops in DenseNet blocks or no_grad context.")
-
-        return float(prob.item()), feature_maps, gradients
+        # Increase threshold for TB detection (only flag if very sure)
+        # We can also compare against the base XRV model here if needed
+        return float(score.item()), feat.detach(), gradients
