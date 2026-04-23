@@ -43,14 +43,26 @@ def generate_gradcam(
     cam = (weights * feature_maps).sum(dim=1, keepdim=False)  # (1, H', W')
     cam = torch.relu(cam).squeeze().cpu().numpy()              # (H', W')
 
-    # ─── Normalise and resize ─────────────────────────────────────────────────
+    # ─── Suppress background noise and soften ─────────────────────────────────
     if cam.max() > 0:
-        cam = cam / cam.max()
+        # Ignore values below 40th percentile to keep the map clean
+        threshold = np.percentile(cam, 40)
+        cam = np.where(cam >= threshold, cam, 0)
+        
+        # Normalize and apply subtle softening
+        if cam.max() > 0:
+            cam = cam / cam.max()
+        
+        # Soften edges for a clinical look
+        cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=1.5, sigmaY=1.5)
+        if cam.max() > 0:
+            cam = cam / cam.max()
     else:
         cam = np.zeros_like(cam)
 
     h, w = original_np.shape[:2]
-    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LINEAR)
+    # Use CUBIC interpolation for smoother upsampling
+    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_CUBIC)
     cam_uint8 = np.uint8(255 * cam_resized)
 
     # ─── Apply colour map ─────────────────────────────────────────────────────
