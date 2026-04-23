@@ -112,11 +112,12 @@ class TBModel:
             _fmaps['value'] = output
 
         def _bwd_hook(module, grad_input, grad_output):
-            # grad_output[0]: gradient w.r.t. the output of denseblock3
+            # grad_output[0]: gradient w.r.t. the output of denseblock4
             _grads['value'] = grad_output[0].detach()
 
-        # Hook denseblock3 — 14×14 spatial resolution gives fine-grained localisation
-        target_layer = self.net.features.denseblock3
+        # Hook denseblock4 — The final convolutional block provides the most 
+        # semantically relevant features for classification decisions.
+        target_layer = self.net.features.denseblock4
         fwd_handle = target_layer.register_forward_hook(_fwd_hook)
         bwd_handle = target_layer.register_full_backward_hook(_bwd_hook)
 
@@ -138,7 +139,8 @@ class TBModel:
             fwd_handle.remove()
             bwd_handle.remove()
 
-        feature_maps = _fmaps.get('value', torch.zeros(1, 1, 14, 14)).detach()
+        # denseblock4 output is 7x7
+        feature_maps = _fmaps.get('value', torch.zeros(1, 1, 7, 7)).detach()
         gradients   = _grads.get('value', torch.zeros_like(feature_maps))
 
         # Log gradient health for debugging

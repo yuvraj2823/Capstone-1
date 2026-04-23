@@ -21,7 +21,7 @@ def generate_gradcam(
     feature_maps: torch.Tensor,
     gradients: torch.Tensor,
     alpha: float = 0.45,
-    percentile_threshold: float = 60.0,
+    percentile_threshold: float = 40.0,
 ) -> Tuple[str, str]:
     """
     Generates Grad-CAM heatmap and blended overlay image.
@@ -29,7 +29,7 @@ def generate_gradcam(
     Args:
         original_np:          uint8 numpy array (H, W, 3) – original resized image.
         feature_maps:         Tensor (1, C, H', W') – last conv feature maps.
-        gradients:            Tensor (1, C, H', W') – gradients w.r.t. feature maps.
+        gradients:            Tensor (1, C, H', W') – gradients w.r.t. the output of denseblock4
         alpha:                Blend factor for overlay (0 = only original, 1 = only heatmap).
         percentile_threshold: Activations below this percentile are zeroed out to suppress
                               background noise (hands, edges, etc.).
@@ -49,14 +49,14 @@ def generate_gradcam(
     cam = torch.relu(cam)                                       # keep only positive activations
     cam = cam.squeeze().cpu().numpy()                           # (H', W')  or scalar if H'=W'=1
 
-    # Guard: if feature map collapsed to a scalar (shouldn't happen with denseblock3)
+    # Guard: if feature map collapsed to a scalar (shouldn't happen with denseblock4)
     if cam.ndim == 0:
         cam = np.full((7, 7), float(cam))
 
     # ─── Suppress background noise via percentile thresholding ────────────────
     if cam.max() > 0:
         threshold_val = np.percentile(cam, percentile_threshold)
-        cam = np.where(cam >= threshold_val, cam - threshold_val, 0.0)
+        cam = np.where(cam >= threshold_val, cam, 0.0)
         if cam.max() > 0:
             cam = cam / cam.max()
     else:
@@ -64,9 +64,10 @@ def generate_gradcam(
         logger.warning("Grad-CAM produced a zero activation map. Returning blank heatmap.")
         cam = np.zeros_like(cam, dtype=np.float32)
 
-    # ─── Smooth to reduce speckle noise ───────────────────────────────────────
+    # ─── Sharper upsampling (Reduce blur) ────────────────────────────────────
     cam = cam.astype(np.float32)
-    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=2, sigmaY=2)
+    # Use a much smaller kernel or skip blur for "less smooth" look
+    cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=0.8, sigmaY=0.8)
 
     # Re-normalise after blur
     if cam.max() > 0:
@@ -74,7 +75,8 @@ def generate_gradcam(
 
     # ─── Resize to match original image ───────────────────────────────────────
     h, w = original_np.shape[:2]
-    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_CUBIC)
+    # Lanczos4 is generally sharper than Cubic
+    cam_resized = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LANCZOS4)
     cam_uint8 = np.uint8(255 * cam_resized)
 
     # ─── Apply colour map (TURBO: better perceptual clarity than JET) ─────────
