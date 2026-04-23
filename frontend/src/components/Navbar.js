@@ -19,7 +19,7 @@ export default function Navbar() {
         </Link>
         {user && (
           <span className="navbar__user" aria-label="Current user">
-            User: {user.username}
+            User: Username
           </span>
         )}
       </div>
