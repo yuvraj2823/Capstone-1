@@ -66,10 +66,9 @@ def preprocess_image(
 
     logger.debug(f"Loaded image: {pil_image.size}, mode={pil_image.mode}, type={mime_type}")
 
-    # Keep a padded uint8 copy (converted to RGB) for overlay generation.
-    # This MUST match the padding logic used in the AI transform for alignment.
-    original_padded = resize_with_padding(pil_image).convert("RGB")
-    original_np = np.array(original_padded, dtype=np.uint8)
+    # Keep a resized uint8 copy (converted to RGB) for overlay generation
+    original_resized = pil_image.resize(TARGET_SIZE, Image.BILINEAR).convert("RGB")
+    original_np = np.array(original_resized, dtype=np.uint8)
 
     # Apply transforms
     tensor = _transform(pil_image).unsqueeze(0)  # (1, 3, 224, 224)
