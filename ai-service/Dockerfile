@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
+# Force total rebuild with no cache
+# Increment this number to trigger a 100% fresh build
+ARG CACHE_BUST=20260424
+
 # Install system dependencies
 # libgl1        – required by opencv-python-headless for cv2 color operations (Grad-CAM)
 # libglib2.0-0  – required by opencv for threading primitives
@@ -28,7 +32,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # --- Cache-bust: Change this version string to force a code-only rebuild ---
-LABEL build-version="2026-04-23-v4"
+LABEL build-version="2026-04-24-FINAL"
 COPY . .
 
 # Create models directory

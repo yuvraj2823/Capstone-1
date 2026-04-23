@@ -94,29 +94,32 @@ class TBModel:
         if self.net is None:
             raise RuntimeError("Model not loaded. Call load() first.")
 
-        image_tensor = image_tensor.to(self.device)
-        image_tensor.requires_grad_(False)
+        _fmaps, _grads = {}, {}
+        def _fwd_hook(mod, inp, out): _fmaps['value'] = out
+        def _bwd_hook(mod, grad_in, grad_out): _grads['value'] = grad_out[0]
 
-        # Enable gradient computation for feature maps
-        with torch.enable_grad():
-            feat = F.relu(self.net.features(image_tensor), inplace=False)
-            feat.retain_grad()  # ensure grad is kept even for non-leaf
-            # register hook
-            feat.register_hook(self.net.save_gradient)
+        # Hook denseblock3 — 14x14 spatial resolution provides much finer
+        # localization of diagnostic features than the final 7x7 map.
+        target_layer = self.net.features.denseblock3
+        fwd_handle = target_layer.register_forward_hook(_fwd_hook)
+        bwd_handle = target_layer.register_full_backward_hook(_bwd_hook)
 
-            pooled = self.net.avgpool(feat)
-            flat = torch.flatten(pooled, 1)
-            logit = self.net.classifier(flat)
-            score = torch.sigmoid(logit).squeeze()
+        try:
+            with torch.enable_grad():
+                x = image_tensor.to(self.device).detach().requires_grad_(True)
+                self.net.zero_grad()
+                prob, logit, _ = self.net(x)
+                
+                # Backprop on logit to avoid sigmoid saturation
+                logit.backward()
+        finally:
+            fwd_handle.remove()
+            bwd_handle.remove()
 
-        # Backprop to get gradients w.r.t. feature maps
-        self.net.zero_grad()
-        logit.backward()
-
-        gradients = self.net._gradients
-        if gradients is None:
-            gradients = torch.zeros_like(feat)
+        # denseblock3 output is 14x14
+        feature_maps = _fmaps.get('value', torch.zeros(1, 1, 14, 14)).detach()
+        gradients   = _grads.get('value', torch.zeros_like(feature_maps))
 
         # Increase threshold for TB detection (only flag if very sure)
         # We can also compare against the base XRV model here if needed
-        return float(score.item()), feat.detach(), gradients
+        return float(prob.item()), feature_maps, gradients

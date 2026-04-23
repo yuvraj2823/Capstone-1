@@ -35,26 +35,28 @@ def generate_gradcam(
         heatmap_b64:  Base64-encoded JPEG of the Grad-CAM heatmap.
         overlay_b64:  Base64-encoded JPEG of heatmap blended with original.
     """
-    # ─── Compute Grad-CAM weights ──────────────────────────────────────────────
-    # Global average pool of gradients → channel weights
-    weights = gradients.mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
+    # ─── Compute Grad-CAM weights (Positive-Influence Filter) ─────────────────
+    # We only care about features that POSITIVELY contributed to the score.
+    # This automatically ignores edges, shoulders, and background noise.
+    weights = torch.relu(gradients).mean(dim=[2, 3], keepdim=True)  # (1, C, 1, 1)
 
     # Weighted combination of feature maps
     cam = (weights * feature_maps).sum(dim=1, keepdim=False)  # (1, H', W')
     cam = torch.relu(cam).squeeze().cpu().numpy()              # (H', W')
 
+    # Guard: if feature map collapsed to a scalar (shouldn't happen with denseblock3)
+    if cam.ndim == 0:
+        cam = np.full((14, 14), float(cam))
+
     # ─── Suppress background noise and soften ─────────────────────────────────
     if cam.max() > 0:
-        # Ignore values below 40th percentile to keep the map clean
-        threshold = np.percentile(cam, 40)
+        # Standardize and apply thresholding
+        cam = cam / cam.max()
+        threshold = np.percentile(cam, 50)  # 50th percentile threshold
         cam = np.where(cam >= threshold, cam, 0)
         
-        # Normalize and apply subtle softening
-        if cam.max() > 0:
-            cam = cam / cam.max()
-        
-        # Soften edges for a clinical look
-        cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=1.5, sigmaY=1.5)
+        # Soften for clinical visualization
+        cam = cv2.GaussianBlur(cam, (0, 0), sigmaX=2.0, sigmaY=2.0)
         if cam.max() > 0:
             cam = cam / cam.max()
     else:
