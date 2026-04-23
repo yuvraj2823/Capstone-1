@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# ── Cache-bust: bump this label whenever ai-service code changes ──────────
+LABEL ai_service_version="2.1.0-gradcam-fix"
+
 # Install Python deps first (layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
