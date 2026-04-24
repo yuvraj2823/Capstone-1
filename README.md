@@ -3,6 +3,12 @@
 
 ---
 
+## Technology Stack
+- **Frontend**: React 18, Daikon (DICOM), React-App-Rewired, Axios.
+- **Backend**: Node.js/Express, Mongoose, Opossum (Circuit Breaker), Sharp, PDFKit.
+- **AI Service**: FastAPI, PyTorch, TorchXRayVision (DenseNet-121), OpenCV.
+- **DevOps**: Docker, Jenkins CI/CD, MongoDB 7.0, Pytest/Jest.
+
 ## Architecture
 TB-Detect is built as a robust microservices-based system, containerized for scale and consistency.
 
@@ -27,13 +33,24 @@ TB-Detect is built as a robust microservices-based system, containerized for sca
 
 ## Key Features
 - **AI Diagnostics**: High-accuracy TB detection using DenseNet-121 (Pre-trained on X-rays via TorchXRayVision).
-- **Explainable AI (XAI)**: Integrated **Grad-CAM** visualizes specifically where the AI sees indicators of TB.
-- **DICOM Support**: Native parsing and rendering of `.dcm` standard medical images directly in the browser.
+- **Explainable AI (XAI)**: Optimized **Grad-CAM** pipeline with positive-influence gradient filtering to focus specifically on pathological indicators.
+- **DICOM Support**: Native parsing and rendering of `.dcm` standard medical images using Daikon.
 - **Advanced Radiological Viewer**: Interactive workstation-style image viewer with Brightness, Contrast, Zoom, Pan, Invert, and adjustable Heatmap Opacity sliders.
 - **Auto-Patient ID**: Dynamic generation of unique Patient IDs (`P-XXXXXX`) for every diagnostic session.
 - **Diagnostic Reports**: Instant PDF report generation with side-by-side original/heatmap/overlay grids.
 - **History & Analytics**: Complete record-keeping and an interactive dashboard for trend analysis.
 - **Data Privacy**: Automatic stripping of EXIF metadata and secure JWT-based authentication.
+- **Reliability**: Integrated **Circuit Breaker** (Opossum) to ensure system stability during AI service timeouts.
+
+## Environment Configuration
+Before running the services, ensure you have a `.env` file in the root or specific service directories with the following:
+```env
+MONGO_USER=admin
+MONGO_PASSWORD=secret
+MONGO_DB=tbdetection
+JWT_SECRET=your_secure_jwt_key
+AI_SERVICE_URL=http://localhost:8000
+```
 
 ## Quick Start (Local Development)
 
